@@ -969,13 +969,13 @@ services:
   # SigNoz Observability
   # ********************
   signoz-zookeeper:
-    image: bitnami/zookeeper:3.7.1
+    image: zookeeper:3.9
     container_name: signoz-zookeeper
     restart: unless-stopped
     ports:
       - "2181:2181"
     volumes:
-      - signoz-zookeeper-data:/bitnami/zookeeper
+      - signoz-zookeeper-data:/data
     environment:
       - ZOO_SERVER_ID=1
       - ALLOW_ANONYMOUS_LOGIN=yes
