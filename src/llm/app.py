@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from flask import Flask, request, jsonify, Response
+from opentelemetry import trace
 import json
 import time
 import random
@@ -16,6 +17,17 @@ from openfeature.contrib.provider.flagd import FlagdProvider
 
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
+
+tracer = trace.get_tracer(__name__)
+
+@app.after_request
+def add_trace_id(response):
+    span = trace.get_current_span()
+    if span:
+        trace_id = span.get_span_context().trace_id
+        if trace_id:
+            response.headers['x-trace-id'] = format(trace_id, '032x')
+    return response
 
 product_review_summaries = None
 product_review_summaries_file_path = "./product-review-summaries.json"

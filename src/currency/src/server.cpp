@@ -210,6 +210,11 @@ class CurrencyService final : public oteldemo::CurrencyService::Service
       span->AddEvent("Conversion successful, response sent back");
       span->SetStatus(StatusCode::kOk);
 
+      // Add trace_id to response headers
+      auto span_context = span->GetContext();
+      std::string trace_id = span_context.trace_id().ToHex();
+      context->AddInitialMetadata("x-trace-id", trace_id);
+
       logger->Info(std::string(__func__) + " conversion successful");
       
       // End the span

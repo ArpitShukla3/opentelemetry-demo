@@ -109,7 +109,6 @@ receivers:
         metrics:
           system.paging.usage:
             enabled: true
-
       processes:
       process:
         mute_process_exe_error: true
@@ -119,32 +118,21 @@ receivers:
         metrics:
           system.uptime:
             enabled: true
+
 exporters:
   debug:
-  otlp_grpc/jaeger:
-    endpoint: "jaeger:4317"
+  # SigNoz collector running on the host machine.
+  # On macOS/Windows: host.docker.internal resolves automatically.
+  # On Linux: replace host.docker.internal with your host IP, e.g. 172.17.0.1,
+  # OR add --add-host=host.docker.internal:host-gateway to the otel-collector service
+  # in docker-compose.yml (already done in the provided docker-compose.yml).
+  otlp/signoz:
+    endpoint: "signoz-otel-collector:4317"
     tls:
       insecure: true
     sending_queue:
       batch:
-  otlp_http/prometheus:
-    endpoint: "http://prometheus:9090/api/v1/otlp"
-    tls:
-      insecure: true
-    sending_queue:
-      batch:
-  opensearch:
-    logs_index: otel-logs
-    logs_index_time_format: "yyyy-MM-dd"
-    http:
-      endpoint: "http://opensearch:9200"
-      tls:
-        insecure: true
-    sending_queue:
-      # Explicitly set due to bug: https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45016
-      num_consumers: 10
-      queue_size: 1000
-      batch:
+
 processors:
   memory_limiter:
     check_interval: 5s
@@ -169,31 +157,31 @@ processors:
             span.kind == SPAN_KIND_SERVER and
             resource.attributes["service.name"] == "frontend" and
             span.attributes["http.route"] == nil and
-            IsMatch(span.attributes["http.target"], "\\/api\\/cart")  # e.g. # /api/cart
+            IsMatch(span.attributes["http.target"], "\\/api\\/cart")
 
           - set(span.attributes["http.route"], "/api/checkout") where
             span.kind == SPAN_KIND_SERVER and
             resource.attributes["service.name"] == "frontend" and
             span.attributes["http.route"] == nil and
-            IsMatch(span.attributes["http.target"], "\\/api\\/checkout")  # e.g. # /api/checkout
+            IsMatch(span.attributes["http.target"], "\\/api\\/checkout")
 
           - set(span.attributes["http.route"], "/api/products/{productId}") where
             span.kind == SPAN_KIND_SERVER and
             resource.attributes["service.name"] == "frontend" and
             span.attributes["http.route"] == nil and
-            IsMatch(span.attributes["http.target"], "\\/api\\/products\\/.*")  # e.g. /api/products/1YMWWN1N4O
+            IsMatch(span.attributes["http.target"], "\\/api\\/products\\/.*")
 
           - set(span.attributes["http.route"], "/api/recommendations") where
             span.kind == SPAN_KIND_SERVER and
             resource.attributes["service.name"] == "frontend" and
             span.attributes["http.route"] == nil and
-            IsMatch(span.attributes["http.target"], "\\/api\\/recommendations")  # e.g. # /api/recommendations?productIds=...
+            IsMatch(span.attributes["http.target"], "\\/api\\/recommendations")
 
           - set(span.attributes["http.route"], "/api/data") where
             span.kind == SPAN_KIND_SERVER and
             resource.attributes["service.name"] == "frontend" and
             span.attributes["http.route"] == nil and
-            IsMatch(span.attributes["http.target"], "\\/api\\/data.*")  # e.g. # " /api/data?contextKeys=telescopes" or /api/data/?contextKeys=cameras
+            IsMatch(span.attributes["http.target"], "\\/api\\/data.*")
 
           # SANITIZE ALL SPAN NAMES TO PREVENT CARDINALITY EXPLOSION
           - set_semconv_span_name("1.37.0", "original_span_name")
@@ -206,15 +194,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [resourcedetection, memory_limiter, transform/sanitize_spans]
-      exporters: [otlp_grpc/jaeger, debug, spanmetrics]
+      exporters: [otlp/signoz, debug, spanmetrics]
     metrics:
       receivers: [docker_stats, httpcheck/frontend-proxy, hostmetrics, nginx, otlp, postgresql, redis, spanmetrics]
       processors: [resourcedetection, memory_limiter]
-      exporters: [otlp_http/prometheus, debug]
+      exporters: [otlp/signoz, debug]
     logs:
       receivers: [otlp]
       processors: [resourcedetection, memory_limiter]
-      exporters: [opensearch, debug]
+      exporters: [otlp/signoz, debug]
   telemetry:
     metrics:
       readers:
@@ -222,7 +210,6 @@ service:
             exporter:
               otlp:
                 protocol: http/protobuf
-                # replace with your observability meta monitoring backend
                 endpoint: http://${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_HTTP}
     logs:
       processors:
@@ -230,5 +217,4 @@ service:
             exporter:
               otlp:
                 protocol: http/protobuf
-                # replace with your observability meta monitoring backend
                 endpoint: http://${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_HTTP}

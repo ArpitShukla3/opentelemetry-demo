@@ -11,6 +11,7 @@ import io.grpc.*;
 import io.grpc.health.v1.HealthCheckResponse.ServingStatus;
 import io.grpc.protobuf.services.*;
 import io.grpc.stub.StreamObserver;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.baggage.Baggage;
@@ -97,6 +98,7 @@ public final class AdService {
         ServerBuilder.forPort(port)
             .addService(new AdServiceImpl())
             .addService(healthMgr.getHealthService())
+            .addInterceptor(new TraceIdServerInterceptor())
             .build()
             .start();
     logger.info("Ad service started, listening on " + port);
@@ -130,6 +132,29 @@ public final class AdService {
     RANDOM
   }
 
+  private static class TraceIdServerInterceptor implements ServerInterceptor {
+    @Override
+    public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+        ServerCall<ReqT, RespT> call, Metadata headers, ServerCallHandler<ReqT, RespT> next) {
+      
+      Span span = Span.current();
+      String traceId = span.getSpanContext().getTraceId();
+      
+      // Add trace_id as trailer
+      Metadata.Key<String> traceIdKey = Metadata.Key.of("x-trace-id", Metadata.ASCII_STRING_MARSHALLER);
+      
+      ServerCall<ReqT, RespT> traceIdCall = new ForwardingServerCall.SimpleForwardingServerCall<ReqT, RespT>(call) {
+        @Override
+        public void close(Status status, Metadata trailers) {
+          trailers.put(traceIdKey, traceId);
+          super.close(status, trailers);
+        }
+      };
+      
+      return next.startCall(traceIdCall, headers);
+    }
+  }
+  
   private static class AdServiceImpl extends oteldemo.AdServiceGrpc.AdServiceImplBase {
     
     private static final String AD_FAILURE = "adFailure";

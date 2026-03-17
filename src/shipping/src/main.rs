@@ -10,6 +10,8 @@ mod telemetry_conf;
 use telemetry_conf::init_otel;
 mod shipping_service;
 use shipping_service::{get_quote, ship_order};
+mod trace_id_middleware;
+use trace_id_middleware::TraceIdMiddleware;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -45,6 +47,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         App::new()
+            .wrap(TraceIdMiddleware)
             .wrap(RequestTracing::new())
             .wrap(RequestMetrics::default())
             .service(get_quote)

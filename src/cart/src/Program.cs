@@ -95,6 +95,18 @@ builder.Services.AddSingleton<HealthServiceImpl>();
 
 var app = builder.Build();
 
+app.Use(async (context, next) =>
+{
+    var tracer = context.RequestServices.GetService<System.Diagnostics.Tracing.Tracer>();
+    // Try to get trace_id from the current activity
+    var activity = System.Diagnostics.Activity.Current;
+    if (activity?.Id != null)
+    {
+        context.Response.Headers.Append("x-trace-id", activity.TraceId.ToString());
+    }
+    await next();
+});
+
 var ValkeyCartStore = (ValkeyCartStore)app.Services.GetRequiredService<ICartStore>();
 app.Services.GetRequiredService<StackExchangeRedisInstrumentation>().AddConnection(ValkeyCartStore.GetConnection());
 

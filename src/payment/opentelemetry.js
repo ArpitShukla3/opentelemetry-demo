@@ -12,6 +12,7 @@ const {containerDetector} = require('@opentelemetry/resource-detector-container'
 const {gcpDetector} = require('@opentelemetry/resource-detector-gcp')
 const {envDetector, hostDetector, osDetector, processDetector} = require('@opentelemetry/resources')
 const {RuntimeNodeInstrumentation} = require('@opentelemetry/instrumentation-runtime-node')
+const {PinoInstrumentation} = require('@opentelemetry/instrumentation-pino')
 
 const sdk = new opentelemetry.NodeSDK({
   traceExporter: new OTLPTraceExporter(),
@@ -22,6 +23,7 @@ const sdk = new opentelemetry.NodeSDK({
         requireParentSpan: true,
       },
     }),
+    new PinoInstrumentation(),
     new RuntimeNodeInstrumentation({
       monitoringPrecision: 5000,
     })

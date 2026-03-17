@@ -41,6 +41,11 @@ first_run = True
 
 class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
     def ListRecommendations(self, request, context):
+        # Add trace_id to response metadata
+        span = trace.get_current_span()
+        trace_id = span.get_span_context().trace_id
+        context.send_initial_metadata([('x-trace-id', trace_id)])
+        
         prod_list = get_product_list(request.product_ids)
         span = trace.get_current_span()
         span.set_attribute("app.products_recommended.count", len(prod_list))

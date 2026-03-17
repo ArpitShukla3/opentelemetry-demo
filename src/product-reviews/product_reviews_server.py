@@ -12,6 +12,7 @@ import random
 
 # Pip
 import grpc
+from grpc import ServerInterceptor
 from opentelemetry import trace, metrics
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
@@ -41,6 +42,27 @@ from metrics import (
 from openai import OpenAI
 
 from google.protobuf.json_format import MessageToJson, MessageToDict
+
+
+class TraceIdInterceptor(ServerInterceptor):
+    def intercept_service(self, continuation, handler_call_details):
+        span = trace.get_current_span()
+        trace_id = span.get_span_context().trace_id
+        
+        # Get the original handler
+        handler = continuation(handler_call_details)
+        
+        # Wrap the response handler to add trace_id to trailers
+        original_response = handler.response_streaming
+        if original_response:
+            # For streaming responses
+            pass  # Streaming trailers are complex
+        else:
+            # For unary responses - we can't easily modify trailers in Python gRPC
+            # But we can modify the behavior through the handler
+            pass
+        
+        return handler
 
 llm_host = None
 llm_port = None
@@ -90,18 +112,36 @@ tools = [
 class ProductReviewService(demo_pb2_grpc.ProductReviewServiceServicer):
     def GetProductReviews(self, request, context):
         logger.info(f"Receive GetProductReviews for product id:{request.product_id}")
+        
+        # Add trace_id to response metadata
+        span = trace.get_current_span()
+        trace_id = span.get_span_context().trace_id
+        context.send_initial_metadata([('x-trace-id', trace_id)])
+        
         product_reviews = get_product_reviews(request.product_id)
 
         return product_reviews
 
     def GetAverageProductReviewScore(self, request, context):
         logger.info(f"Receive GetAverageProductReviewScore for product id:{request.product_id}")
+        
+        # Add trace_id to response metadata
+        span = trace.get_current_span()
+        trace_id = span.get_span_context().trace_id
+        context.send_initial_metadata([('x-trace-id', trace_id)])
+        
         product_reviews = get_average_product_review_score(request.product_id)
 
         return product_reviews
 
     def AskProductAIAssistant(self, request, context):
         logger.info(f"Receive AskProductAIAssistant for product id:{request.product_id}, question: {request.question}")
+        
+        # Add trace_id to response metadata
+        span = trace.get_current_span()
+        trace_id = span.get_span_context().trace_id
+        context.send_initial_metadata([('x-trace-id', trace_id)])
+        
         ai_assistant_response = get_ai_assistant_response(request.product_id, request.question)
 
         return ai_assistant_response

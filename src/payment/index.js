@@ -8,8 +8,30 @@ const opentelemetry = require('@opentelemetry/api')
 const charge = require('./charge')
 const logger = require('./logger')
 
+function traceIdInterceptor(call, callback, next) {
+  const span = opentelemetry.trace.getActiveSpan();
+  const traceId = span ? span.spanContext().traceId : '';
+  
+  call.sendMetadata = new grpc.Metadata();
+  if (traceId) {
+    call.sendMetadata.add('x-trace-id', traceId);
+  }
+  
+  return next(call, callback);
+}
+
 async function chargeServiceHandler(call, callback) {
   const span = opentelemetry.trace.getActiveSpan();
+
+  const originalCallback = callback;
+  callback = (err, response) => {
+    if (span) {
+      const traceId = span.spanContext().traceId;
+      call.sendMetadata = new grpc.Metadata();
+      call.sendMetadata.add('x-trace-id', traceId);
+    }
+    originalCallback(err, response);
+  };
 
   try {
     const amount = call.request.amount

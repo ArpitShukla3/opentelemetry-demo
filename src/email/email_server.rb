@@ -33,6 +33,14 @@ OpenTelemetry::SDK.configure do |c|
   c.use "OpenTelemetry::Instrumentation::Sinatra"
 end
 
+# Add after hook to inject x-trace-id header
+after do
+  current_span = OpenTelemetry::Trace.current_span
+  if current_span && current_span.context.valid?
+    response.headers['x-trace-id'] = current_span.context.trace_id
+  end
+end
+
 $logger = OpenTelemetry.logger_provider.logger(name: 'email')
 
 otlp_metric_exporter = OpenTelemetry::Exporter::OTLP::Metrics::MetricsExporter.new

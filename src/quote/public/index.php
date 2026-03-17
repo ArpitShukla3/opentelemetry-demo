@@ -52,6 +52,25 @@ $app->addBodyParsingMiddleware();
 
 // Add Error Middleware
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
+
+// Add trace_id middleware
+$app->add(function ($request, $handler) {
+    $response = $handler->handle($request);
+    
+    $tracer = Globals::tracerProvider()->getTracer('quote');
+    $span = $tracer->getCurrentSpan();
+    
+    if ($span !== null) {
+        $spanContext = $span->getSpanContext();
+        $traceId = $spanContext->getTraceId();
+        if ($traceId !== '00000000000000000000000000000000') {
+            $response = $response->withHeader('x-trace-id', $traceId);
+        }
+    }
+    
+    return $response;
+});
+
 Loop::get()->addSignal(SIGTERM, function() {
     exit;
 });

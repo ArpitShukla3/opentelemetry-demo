@@ -882,6 +882,8 @@ services:
         condition: service_started
       opensearch:
         condition: service_healthy
+      signoz-otel-collector:
+        condition: service_started
     logging: *logging
     environment:
       - FRONTEND_PROXY_ADDR
@@ -962,3 +964,124 @@ services:
       timeout: 10s
       retries: 10
     logging: *logging
+
+  # ********************
+  # SigNoz Observability
+  # ********************
+  signoz-zookeeper:
+    image: bitnami/zookeeper:3.7.1
+    container_name: signoz-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    volumes:
+      - signoz-zookeeper-data:/bitnami/zookeeper
+    environment:
+      - ZOO_SERVER_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  signoz-clickhouse:
+    image: clickhouse/clickhouse-server:24.1.2-alpine
+    container_name: signoz-clickhouse
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - signoz-clickhouse-data:/var/lib/clickhouse/
+    depends_on:
+      signoz-zookeeper:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+  signoz-query-service:
+    image: signoz/query-service:0.64.0
+    container_name: signoz-query-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - signoz-data:/var/lib/signoz/
+    environment:
+      - ClickHouseUrl=tcp://signoz-clickhouse:9000
+      - ALERTMANAGER_API_PREFIX=http://signoz-alertmanager:9093/api/
+      - SIGNOZ_LOCAL_DB_PATH=/var/lib/signoz/signoz.db
+      - STORAGE=clickhouse
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+  signoz-frontend:
+    image: signoz/frontend:0.64.0
+    container_name: signoz-frontend
+    restart: unless-stopped
+    ports:
+      - "3301:3301"
+    depends_on:
+      - signoz-query-service
+    logging: *logging
+
+  signoz-alertmanager:
+    image: signoz/alertmanager:0.23.7
+    container_name: signoz-alertmanager
+    restart: unless-stopped
+    volumes:
+      - signoz-alertmanager-data:/data
+    depends_on:
+      signoz-query-service:
+        condition: service_started
+    command:
+      - --queryService.url=http://signoz-query-service:8085
+      - --storage.path=/data
+    logging: *logging
+
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:0.111.16
+    container_name: signoz-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+      signoz-query-service:
+        condition: service_started
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=signoz-host,os.type=linux
+    logging: *logging
+
+  signoz-logspout:
+    image: gliderlabs/logspout:v3.2.14
+    container_name: signoz-logspout
+    restart: unless-stopped
+    volumes:
+      - /etc/hostname:/etc/host_hostname:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: syslog+tcp://signoz-otel-collector:2255
+    depends_on:
+      - signoz-otel-collector
+    logging: *logging
+
+volumes:
+  signoz-zookeeper-data:
+  signoz-clickhouse-data:
+  signoz-data:
+  signoz-alertmanager-data:
